@@ -1,0 +1,41 @@
+package com.example.chat.config;
+
+import com.example.chat.security.StompAuthChannelInterceptor;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
+import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+
+@Configuration
+@EnableWebSocketMessageBroker
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+  private final WebSocketProperties webSocketProperties;
+  private final StompAuthChannelInterceptor stompAuthChannelInterceptor;
+
+  public WebSocketConfig(WebSocketProperties webSocketProperties,
+                         StompAuthChannelInterceptor stompAuthChannelInterceptor) {
+    this.webSocketProperties = webSocketProperties;
+    this.stompAuthChannelInterceptor = stompAuthChannelInterceptor;
+  }
+
+  @Override
+  public void registerStompEndpoints(StompEndpointRegistry registry) {
+    registry.addEndpoint(webSocketProperties.getEndpoint())
+        .setAllowedOriginPatterns(webSocketProperties.getAllowedOriginPatterns().toArray(String[]::new));
+  }
+
+  @Override
+  public void configureMessageBroker(MessageBrokerRegistry registry) {
+    registry.enableSimpleBroker(webSocketProperties.getTopicPrefix(), webSocketProperties.getQueuePrefix());
+    registry.setApplicationDestinationPrefixes(webSocketProperties.getApplicationPrefix());
+    registry.setUserDestinationPrefix("/user");
+  }
+
+  @Override
+  public void configureClientInboundChannel(ChannelRegistration registration) {
+    registration.interceptors(stompAuthChannelInterceptor);
+  }
+}

@@ -1,0 +1,12 @@
+app:
+  security:
+    mode: oauth2
+  messaging:
+    provider: kafka
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://example-idp/realms/chat

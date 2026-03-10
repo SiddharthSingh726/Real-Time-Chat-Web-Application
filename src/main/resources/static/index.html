@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulseChat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page-glow page-glow-left"></div>
+  <div class="page-glow page-glow-right"></div>
+
+  <div class="app">
+    <header class="topbar panel">
+      <div>
+        <div class="eyebrow">Realtime collaboration</div>
+        <h1>PulseChat</h1>
+        <p class="subtitle">A sharper chat workspace with local sign-in, one-on-one threads, group rooms, typing signals, and AI-assisted prompts.</p>
+      </div>
+      <div class="identity-card">
+        <div class="auth-mode-switch">
+          <button id="showLoginButton" class="button button-ghost auth-tab active" type="button">Login</button>
+          <button id="showRegisterButton" class="button button-ghost auth-tab" type="button">Create account</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+          <label class="field">
+            <span class="field-label">User ID</span>
+            <input id="loginUserIdInput" maxlength="120" placeholder="user-1" />
+          </label>
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input id="loginPasswordInput" type="password" maxlength="120" placeholder="••••••••" />
+          </label>
+          <div class="identity-actions">
+            <button id="loginButton" class="button button-primary" type="submit">Login</button>
+            <div class="status-pill" id="connectionBadge">Offline</div>
+          </div>
+        </form>
+
+        <form id="registerForm" class="auth-form hidden">
+          <label class="field">
+            <span class="field-label">Display name</span>
+            <input id="registerDisplayNameInput" maxlength="120" placeholder="Ava Carter" />
+          </label>
+          <label class="field">
+            <span class="field-label">User ID</span>
+            <input id="registerUserIdInput" maxlength="120" placeholder="ava" />
+          </label>
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input id="registerPasswordInput" type="password" maxlength="120" placeholder="Minimum 4 characters" />
+          </label>
+          <button id="registerButton" class="button button-secondary" type="submit">Create account</button>
+        </form>
+
+        <div id="activeIdentity" class="active-identity hidden">
+          <div>
+            <div class="field-label">Logged in as</div>
+            <div id="activeIdentityName" class="active-identity-name"></div>
+            <div id="activeIdentityId" class="active-identity-id"></div>
+          </div>
+          <div class="identity-actions">
+            <button id="logoutButton" class="button button-ghost" type="button">Logout</button>
+            <button id="refreshSessionButton" class="button button-primary" type="button">Load Workspace</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel sidebar">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Rooms</div>
+            <div class="panel-note">Groups and one-on-one threads for the signed-in account.</div>
+          </div>
+          <button id="refreshButton" class="button button-ghost" type="button">Refresh</button>
+        </div>
+
+        <div class="sidebar-actions">
+          <button id="newGroupButton" class="button button-primary" type="button">New Group</button>
+          <button id="newDirectButton" class="button button-secondary" type="button">New Direct</button>
+        </div>
+
+        <div id="conversationList" class="conversation-list"></div>
+      </aside>
+
+      <section class="panel chat-stage">
+        <div class="chat-stage-header">
+          <div>
+            <div id="conversationBadge" class="tag">No room selected</div>
+            <h2 id="conversationTitle">Choose a conversation</h2>
+            <p id="conversationMeta" class="conversation-meta">Create a group or direct thread to start chatting.</p>
+          </div>
+          <div class="stage-actions">
+            <button id="blockConversationButton" class="button button-secondary hidden" type="button">Block User</button>
+            <button id="deleteConversationButton" class="button button-danger hidden" type="button">Delete Chat</button>
+            <button id="copyConversationButton" class="button button-ghost" type="button" disabled>Copy ID</button>
+          </div>
+        </div>
+
+        <div id="memberStrip" class="member-strip"></div>
+        <div id="conversationWarning" class="conversation-warning hidden"></div>
+
+        <div id="messageList" class="message-list">
+          <div class="empty-state">
+            <div class="empty-title">No conversation selected</div>
+            <div class="empty-copy">Load your workspace, create a room, then pick it from the left rail.</div>
+          </div>
+        </div>
+
+        <div id="typingIndicator" class="typing-indicator"></div>
+
+        <form id="composerForm" class="composer">
+          <textarea id="messageInput" rows="1" maxlength="4000" placeholder="Write a message. Use @ai to trigger the AI worker." disabled></textarea>
+          <div class="composer-actions">
+            <button id="aiPromptButton" class="button button-ghost" type="button">Insert @ai</button>
+            <button id="sendButton" class="button button-primary" type="submit" disabled>Send</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="panel activity-rail">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Launchpad</div>
+            <div class="panel-note">Use groups for team rooms and directs for one-on-one chat.</div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-label">Current WebSocket</div>
+          <code id="wsUrlLabel"></code>
+        </div>
+
+        <div class="info-card">
+          <div class="info-label">Conversation setup</div>
+          <p>Create a group with several member IDs like <code>user-2,user-3,user-4</code>.</p>
+        </div>
+
+        <div class="directory-wrap">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">People</div>
+              <div class="panel-note">Start one-on-one chat from the directory.</div>
+            </div>
+          </div>
+          <div id="userDirectory" class="directory-list"></div>
+        </div>
+
+        <div class="activity-log-wrap">
+          <div class="info-label">Activity</div>
+          <div id="activityLog" class="activity-log"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div id="composerOverlay" class="overlay hidden"></div>
+  <section id="conversationSheet" class="sheet hidden">
+    <div class="sheet-header">
+      <div>
+        <div id="sheetEyebrow" class="eyebrow">Create conversation</div>
+        <h3 id="sheetTitle">New Group</h3>
+      </div>
+      <button id="closeSheetButton" class="button button-ghost" type="button">Close</button>
+    </div>
+
+    <form id="conversationForm" class="sheet-form">
+      <input id="conversationType" type="hidden" value="GROUP" />
+
+      <label class="field">
+        <span class="field-label">Title</span>
+        <input id="conversationTitleInput" maxlength="120" placeholder="Product Launch Room" required />
+      </label>
+
+      <label class="field">
+        <span class="field-label">Members</span>
+        <textarea id="memberIdsInput" rows="4" placeholder="user-2, user-3, user-4" required></textarea>
+      </label>
+
+      <div class="sheet-help">
+        Add user IDs separated by commas. Your own ID is included automatically.
+      </div>
+
+      <button id="createConversationButton" class="button button-primary button-block" type="submit">Create Conversation</button>
+    </form>
+  </section>
+
+  <div id="toastStack" class="toast-stack"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.1.1/bundles/stomp.umd.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
