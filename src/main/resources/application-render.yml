@@ -6,8 +6,10 @@ server:
   forward-headers-strategy: framework
 
 spring:
-  # Render provides REDIS_URL as redis://host:port
-  # Parse it into Spring properties
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
   data:
     redis:
       url: ${REDIS_URL:redis://localhost:6379}
