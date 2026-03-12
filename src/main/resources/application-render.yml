@@ -1,0 +1,26 @@
+# Render.com deployment profile
+# Activated via SPRING_PROFILES_ACTIVE=render
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+spring:
+  # Render provides REDIS_URL as redis://host:port
+  # Parse it into Spring properties
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+
+app:
+  security:
+    mode: ${APP_SECURITY_MODE:dev}
+    allow-header-impersonation: ${APP_SECURITY_ALLOW_HEADER_IMPERSONATION:false}
+  messaging:
+    provider: ${APP_MESSAGING_PROVIDER:local}
+  websocket:
+    allowed-origin-patterns:
+      - https://*.onrender.com
+      - https://*.render.com
+  ai:
+    enabled: ${APP_AI_ENABLED:false}

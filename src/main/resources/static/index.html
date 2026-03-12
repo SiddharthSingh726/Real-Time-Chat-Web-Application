@@ -13,6 +13,11 @@
   <div class="page-glow page-glow-left"></div>
   <div class="page-glow page-glow-right"></div>
 
+  <button id="themeToggle" class="theme-toggle" type="button" title="Toggle dark mode">
+    <span class="theme-icon light-icon">&#9790;</span>
+    <span class="theme-icon dark-icon">&#9728;</span>
+  </button>
+
   <div class="app">
     <header class="topbar panel">
       <div>
@@ -86,6 +91,10 @@
           <button id="newDirectButton" class="button button-secondary" type="button">New Direct</button>
         </div>
 
+        <div class="search-wrap">
+          <input id="conversationSearch" class="search-input" type="text" placeholder="Search conversations..." />
+        </div>
+
         <div id="conversationList" class="conversation-list"></div>
       </aside>
 
@@ -115,11 +124,19 @@
 
         <div id="typingIndicator" class="typing-indicator"></div>
 
+        <button id="scrollBottomButton" class="scroll-bottom-btn hidden" type="button" title="Jump to latest">&darr; New messages</button>
+
         <form id="composerForm" class="composer">
-          <textarea id="messageInput" rows="1" maxlength="4000" placeholder="Write a message. Use @ai to trigger the AI worker." disabled></textarea>
-          <div class="composer-actions">
-            <button id="aiPromptButton" class="button button-ghost" type="button">Insert @ai</button>
-            <button id="sendButton" class="button button-primary" type="submit" disabled>Send</button>
+          <textarea id="messageInput" rows="1" maxlength="4000" placeholder="Write a message. Use @ai to trigger the AI worker. Ctrl+Enter to send." disabled></textarea>
+          <div class="composer-footer">
+            <div class="composer-actions">
+              <button id="emojiButton" class="button button-ghost emoji-btn" type="button" title="Insert emoji">&#128578;</button>
+              <button id="aiPromptButton" class="button button-ghost" type="button">Insert @ai</button>
+            </div>
+            <div class="composer-right">
+              <span id="charCounter" class="char-counter">0 / 4000</span>
+              <button id="sendButton" class="button button-primary" type="submit" disabled>Send</button>
+            </div>
           </div>
         </form>
       </section>
@@ -190,6 +207,10 @@
       <button id="createConversationButton" class="button button-primary button-block" type="submit">Create Conversation</button>
     </form>
   </section>
+
+  <div id="emojiPicker" class="emoji-picker hidden">
+    <div class="emoji-grid" id="emojiGrid"></div>
+  </div>
 
   <div id="toastStack" class="toast-stack"></div>
 

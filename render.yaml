@@ -1,0 +1,48 @@
+databases:
+  - name: pulsechat-db
+    plan: free
+    databaseName: chatapp
+    user: chat
+    ipAllowList: []
+
+services:
+  - type: redis
+    name: pulsechat-redis
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+
+  - type: web
+    name: pulsechat
+    plan: free
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: render
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: pulsechat-db
+          property: connectionString
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: pulsechat-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: pulsechat-db
+          property: password
+      - key: REDIS_URL
+        fromService:
+          name: pulsechat-redis
+          type: redis
+          property: connectionString
+      - key: APP_SECURITY_MODE
+        value: dev
+      - key: APP_SECURITY_ALLOW_HEADER_IMPERSONATION
+        value: "false"
+      - key: APP_MESSAGING_PROVIDER
+        value: local
+      - key: APP_AI_ENABLED
+        value: "false"

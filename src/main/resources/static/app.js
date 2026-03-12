@@ -1,6 +1,17 @@
 (function () {
+  const AVATAR_COLORS = [
+    "#bf4c24", "#116466", "#7a5195", "#ef5675", "#2d6a4f",
+    "#e07b39", "#3a86a8", "#6a4c93", "#1982c4", "#8ac926"
+  ];
+  const EMOJIS = [
+    "\u{1F44D}", "\u{1F44E}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F525}", "\u{1F389}", "\u{1F44B}", "\u{1F914}",
+    "\u{1F60D}", "\u{1F62D}", "\u{1F4AF}", "\u{2705}", "\u{274C}", "\u{1F680}", "\u{1F4A1}", "\u{1F440}",
+    "\u{1F64F}", "\u{1F60E}", "\u{1F31F}", "\u{1F4AC}", "\u{1F3AF}", "\u{26A1}", "\u{1F4AA}", "\u{1F381}"
+  ];
+
   const state = {
     token: localStorage.getItem("pulsechat.authToken") || "",
+    theme: localStorage.getItem("pulsechat.theme") || "light",
     me: null,
     conversations: [],
     users: [],
@@ -12,7 +23,10 @@
     userSubs: [],
     messageIds: new Set(),
     typingUsers: new Map(),
-    typingTimer: null
+    typingTimer: null,
+    lastSenderId: null,
+    unreadCounts: {},
+    onlineUsers: new Set()
   };
 
   const el = byId([
@@ -27,12 +41,16 @@
     "aiPromptButton", "copyConversationButton", "activityLog", "connectionBadge",
     "wsUrlLabel", "userDirectory", "conversationSheet", "composerOverlay",
     "closeSheetButton", "sheetEyebrow", "sheetTitle", "conversationForm",
-    "conversationType", "conversationTitleInput", "memberIdsInput", "toastStack"
+    "conversationType", "conversationTitleInput", "memberIdsInput", "toastStack",
+    "themeToggle", "conversationSearch", "charCounter", "scrollBottomButton",
+    "emojiButton", "emojiPicker", "emojiGrid"
   ]);
 
   const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
   el.wsUrlLabel.textContent = wsUrl;
 
+  applyTheme(state.theme);
+  buildEmojiPicker();
   wire();
   bootstrap();
 
@@ -69,6 +87,7 @@
     };
     el.messageInput.oninput = () => {
       autosize();
+      updateCharCounter();
       announceTyping();
     };
     el.copyConversationButton.onclick = async () => {
@@ -83,6 +102,24 @@
     };
     el.deleteConversationButton.onclick = async () => deleteConversation();
     el.blockConversationButton.onclick = async () => toggleConversationBlock();
+    el.themeToggle.onclick = () => toggleTheme();
+    el.conversationSearch.oninput = () => filterConversations();
+    el.scrollBottomButton.onclick = () => { scrollEnd(true); el.scrollBottomButton.classList.add("hidden"); };
+    el.messageList.onscroll = () => {
+      const gap = el.messageList.scrollHeight - el.messageList.scrollTop - el.messageList.clientHeight;
+      el.scrollBottomButton.classList.toggle("hidden", gap < 120);
+    };
+    el.emojiButton.onclick = (e) => { e.stopPropagation(); el.emojiPicker.classList.toggle("hidden"); };
+    document.addEventListener("click", (e) => {
+      if (!el.emojiPicker.contains(e.target) && e.target !== el.emojiButton) el.emojiPicker.classList.add("hidden");
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { closeSheet(); el.emojiPicker.classList.add("hidden"); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && document.activeElement === el.messageInput) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
   }
 
   function setAuthMode(mode) {
@@ -184,6 +221,7 @@
       state.users = Array.isArray(users) ? users : [];
       renderConversations();
       renderUsers();
+      pollPresence();
       if (state.selectedId && state.conversations.some((c) => c.id === state.selectedId)) return selectConversation(state.selectedId);
       if (state.conversations.length) return selectConversation(state.conversations[0].id);
       clearStage(true);
@@ -198,17 +236,29 @@
       el.conversationList.innerHTML = empty("No rooms yet", "Use New Group or start a one-on-one chat from the people directory.");
       return;
     }
+    const query = (el.conversationSearch.value || "").toLowerCase();
+    const filtered = query ? state.conversations.filter((c) => c.title.toLowerCase().includes(query)) : state.conversations;
     el.conversationList.innerHTML = "";
-    state.conversations.forEach((c) => {
+    if (!filtered.length) {
+      el.conversationList.innerHTML = empty("No matches", "Try a different search term.");
+      return;
+    }
+    filtered.forEach((c) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `conversation-card${c.id === state.selectedId ? " active" : ""}`;
       const status = c.blocked ? `<span class="conversation-pill">Blocked</span>` : "";
+      const unread = state.unreadCounts[c.id] || 0;
+      const unreadBadge = unread > 0 ? `<span class="unread-badge">${unread > 99 ? "99+" : unread}</span>` : "";
+      const avatarName = c.type === "DIRECT" ? (c.memberIds.find((m) => m !== (state.me && state.me.userId)) || "?") : c.title;
       button.innerHTML = `
+        <div class="conversation-card-row">${avatar(avatarName, false)}
+        <div style="flex:1;min-width:0">
         <div class="conversation-card-meta"><span>${c.type === "DIRECT" ? "1:1" : "GROUP"}</span><span>${relative(c.updatedAt || c.createdAt)}</span></div>
         <div class="conversation-card-title">${safe(c.title)}</div>
         <div class="conversation-card-foot"><span>${c.memberIds.length} members</span><span>${c.id.slice(0, 8)}</span></div>
-        ${status}`;
+        </div></div>
+        ${status}${unreadBadge}`;
       button.onclick = async () => selectConversation(c.id);
       el.conversationList.appendChild(button);
     });
@@ -225,7 +275,8 @@
       const card = document.createElement("div");
       card.className = "directory-user";
       const status = userStatus(u);
-      card.innerHTML = `<div class="directory-user-head"><div><div class="directory-user-name">${safe(u.displayName)}</div><div class="directory-user-id">@${safe(u.userId)}</div></div></div>${status ? `<div class="directory-status">${safe(status)}</div>` : ""}`;
+      const online = state.onlineUsers.has(u.userId);
+      card.innerHTML = `<div class="directory-user-head">${avatar(u.displayName || u.userId, online, true)}<div><div class="directory-user-name">${safe(u.displayName)}</div><div class="directory-user-id">@${safe(u.userId)}</div></div></div>${status ? `<div class="directory-status">${safe(status)}</div>` : ""}`;
 
       const actions = document.createElement("div");
       actions.className = "directory-actions";
@@ -272,6 +323,7 @@
     const c = state.conversations.find((x) => x.id === id);
     if (!c) return;
     state.selectedId = id;
+    state.unreadCounts[id] = 0;
     renderConversations();
     renderHeader(c);
     await loadHistory(c.id);
@@ -287,7 +339,8 @@
     c.memberIds.forEach((m) => {
       const chip = document.createElement("div");
       chip.className = "member-chip";
-      chip.textContent = m;
+      const online = state.onlineUsers.has(m);
+      chip.innerHTML = `${avatar(m, online, true, true)}${safe(m)}`;
       el.memberStrip.appendChild(chip);
     });
     const partner = c.type === "DIRECT" ? directPartner(c) : null;
@@ -316,6 +369,7 @@
       const history = await api("GET", `/api/conversations/${id}/messages?limit=100`);
       const items = Array.isArray(history.items) ? history.items : [];
       state.messageIds = new Set();
+      state.lastSenderId = null;
       el.messageList.innerHTML = "";
       if (!items.length) {
         el.messageList.innerHTML = empty("Room is ready", "Start the first message to light up the thread.");
@@ -393,8 +447,11 @@
       const m = JSON.parse(f.body);
       if (m.conversationId === state.selectedId) {
         appendMessage(m, true);
-        bumpConversation(m.conversationId, m.createdAt);
+      } else {
+        state.unreadCounts[m.conversationId] = (state.unreadCounts[m.conversationId] || 0) + 1;
+        playNotificationSound();
       }
+      bumpConversation(m.conversationId, m.createdAt);
     }));
     state.roomSubs.push(state.client.subscribe(`/topic/conversations.${id}.typing`, (f) => {
       const s = JSON.parse(f.body);
@@ -425,6 +482,7 @@
       });
       el.messageInput.value = "";
       autosize();
+      updateCharCounter();
       publishTyping(false);
     } catch (e) {
       toast(e.message || "Message send failed.", true);
@@ -449,11 +507,16 @@
     const emptyState = el.messageList.querySelector(".empty-state");
     if (emptyState) emptyState.remove();
     const tone = m.aiGenerated ? "ai" : (state.me && m.senderId === state.me.userId ? "self" : "other");
+    const grouped = state.lastSenderId === m.senderId;
+    state.lastSenderId = m.senderId;
     const article = document.createElement("article");
-    article.className = `message ${tone}`;
-    article.innerHTML = `<div class="message-head"><span class="message-author">${safe(m.senderId)}</span><span class="message-time">${clock(m.createdAt)}</span></div><div class="message-body">${safe(m.text)}</div>`;
+    article.className = `message ${tone}${grouped ? " grouped" : ""}`;
+    article.innerHTML = `<div class="message-head">${avatar(m.senderId, false, false, true)}<div class="message-head-info"><span class="message-author">${safe(m.senderId)}</span><span class="message-time" title="${new Date(m.createdAt).toLocaleString()}">${clock(m.createdAt)}</span></div></div><div class="message-body">${linkify(safe(m.text))}</div>`;
     el.messageList.appendChild(article);
-    if (scroll) scrollEnd(true);
+    if (scroll) {
+      scrollEnd(true);
+      if (state.me && m.senderId !== state.me.userId) playNotificationSound();
+    }
   }
 
   function bumpConversation(id, updatedAt) {
@@ -721,4 +784,102 @@
       return acc;
     }, {});
   }
+
+  /* ── Theme toggle ── */
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    state.theme = theme;
+    localStorage.setItem("pulsechat.theme", theme);
+  }
+
+  function toggleTheme() {
+    applyTheme(state.theme === "dark" ? "light" : "dark");
+  }
+
+  /* ── Avatar generation ── */
+  function avatarColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  }
+
+  function avatarInitials(name) {
+    const parts = name.trim().split(/[\s\-_@.]+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }
+
+  function avatar(name, online, showPresence, small) {
+    const color = avatarColor(name);
+    const initials = avatarInitials(name);
+    const sizeClass = small ? " avatar-sm" : "";
+    const presenceClass = showPresence ? ` presence-dot${online ? " is-online" : ""}` : "";
+    return `<div class="avatar${sizeClass}${presenceClass}" style="background:${color}">${initials}</div>`;
+  }
+
+  /* ── Character counter ── */
+  function updateCharCounter() {
+    const len = el.messageInput.value.length;
+    el.charCounter.textContent = `${len} / 4000`;
+    el.charCounter.classList.toggle("warn", len > 3200 && len <= 3800);
+    el.charCounter.classList.toggle("danger", len > 3800);
+  }
+
+  /* ── URL linkification ── */
+  function linkify(text) {
+    return text.replace(/(https?:\/\/[^\s<&"']+)/gi, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  }
+
+  /* ── Conversation search filter ── */
+  function filterConversations() {
+    renderConversations();
+  }
+
+  /* ── Notification sound ── */
+  function playNotificationSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.2);
+    } catch {}
+  }
+
+  /* ── Emoji picker ── */
+  function buildEmojiPicker() {
+    EMOJIS.forEach((emoji) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = emoji;
+      btn.onclick = () => {
+        el.messageInput.value += emoji;
+        el.messageInput.focus();
+        autosize();
+        updateCharCounter();
+        el.emojiPicker.classList.add("hidden");
+      };
+      el.emojiGrid.appendChild(btn);
+    });
+  }
+
+  /* ── Online presence polling ── */
+  function pollPresence() {
+    if (!state.me || !state.users.length) return;
+    state.users.forEach(async (u) => {
+      try {
+        const res = await api("GET", `/api/presence/${encodeURIComponent(u.userId)}`);
+        if (res && res.online) state.onlineUsers.add(u.userId);
+        else state.onlineUsers.delete(u.userId);
+      } catch {}
+    });
+    renderUsers();
+  }
+  setInterval(pollPresence, 30000);
 })();
